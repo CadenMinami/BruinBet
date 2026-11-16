@@ -1,0 +1,31 @@
+/* layout for the create market form */
+.admin-create form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 500px;
+}
+
+.admin-create label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.outcome-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.outcome-row input[type='number'] {
+  width: 80px;
+}
+
+.admin-create .error {
+  color: #b00020;
+}
+
+.admin-create .success {
+  color: #17642f;
+}
