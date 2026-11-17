@@ -1,11 +1,30 @@
-import { requireAuth } from "../middleware/auth.js";
 import { Router } from "express";
 import bcrypt from "bcrypt";
-import User from "../models/User.js";
 import jwt from "jsonwebtoken";
+import User from "../models/User.js";
+import { requireAuth } from "../middleware/auth.js";
 
 const router = Router();
-const todo = (req, res) => res.status(501).json({ todo: true });
+
+function toPublicUser(user) {
+  return {
+    id: user._id.toString(),
+    username: user.username,
+    email: user.email,
+    balance: user.balance,
+    isAdmin: user.isAdmin,
+  };
+}
+
+function signToken(user, jwtSecret) {
+  return jwt.sign({}, jwtSecret, {
+    subject: user._id.toString(),
+    algorithm: "HS256",
+    expiresIn: "1h",
+    issuer: "bruinbet-api",
+    audience: "bruinbet-client",
+  });
+}
 
 router.post("/signup", async (req, res) => {
   const { username, email, password } = req.body ?? {};
@@ -18,7 +37,7 @@ router.post("/signup", async (req, res) => {
   const cleanEmail = email.trim().toLowerCase();
 
   if (cleanUsername.length < 3 || cleanUsername.length > 30) {
-    return res.status(400).json({ error: "Username must be 3–30 characters." });
+    return res.status(400).json({ error: "Username must be 3-30 characters." });
   }
 
   if (cleanEmail.length > 254 || !/^[^\s@]+@(g\.)?ucla\.edu$/.test(cleanEmail)) {
@@ -27,6 +46,11 @@ router.post("/signup", async (req, res) => {
 
   if (password.length < 8 || Buffer.byteLength(password, "utf8") > 72) {
     return res.status(400).json({ error: "Password must be at least 8 characters and at most 72 bytes." });
+  }
+
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret || Buffer.byteLength(jwtSecret, "utf8") < 32) {
+    return res.status(500).json({ error: "Authentication is not configured." });
   }
 
   try {
@@ -45,15 +69,9 @@ router.post("/signup", async (req, res) => {
       passwordHash,
     });
 
-    return res.status(201).json({
-      user: {
-        id: user._id.toString(),
-        username: user.username,
-        email: user.email,
-        balance: user.balance,
-        isAdmin: user.isAdmin,
-      },
-    });
+    const token = signToken(user, jwtSecret);
+    res.set("Cache-Control", "no-store");
+    return res.status(201).json({ token, user: toPublicUser(user) });
   } catch (error) {
     if (error.code === 11000) {
       return res.status(409).json({ error: "Username or email is already registered." });
@@ -88,43 +106,17 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid email or password." });
     }
 
-    const token = jwt.sign(
-      {},
-      jwtSecret,
-      {
-        subject: user._id.toString(),
-        algorithm: "HS256",
-        expiresIn: "1h",
-        issuer: "bruinbet-api",
-        audience: "bruinbet-client",
-      }
-    );
-
+    const token = signToken(user, jwtSecret);
     res.set("Cache-Control", "no-store");
-    return res.status(200).json({
-      token,
-      user: {
-        id: user._id.toString(),
-        username: user.username,
-        email: user.email,
-        balance: user.balance,
-        isAdmin: user.isAdmin,
-      },
-    });
+    return res.status(200).json({ token, user: toPublicUser(user) });
   } catch {
     return res.status(500).json({ error: "Unable to log in. Please try again." });
   }
 });
+
 router.get("/me", requireAuth, (req, res) => {
   res.set("Cache-Control", "no-store");
-  return res.json({
-    user: {
-      id: req.user._id.toString(),
-      username: req.user.username,
-      email: req.user.email,
-      balance: req.user.balance,
-      isAdmin: req.user.isAdmin,
-    },
-  });
+  return res.json({ user: toPublicUser(req.user) });
 });
+
 export default router;
