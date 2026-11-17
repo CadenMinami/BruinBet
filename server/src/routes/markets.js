@@ -2,7 +2,7 @@ import { Router } from "express";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
 import mongoose from "mongoose";
 import Market from "../models/Market.js";
-
+import { settleMarket } from "../services/settlement.js";
 
 const router = Router();
 const todo = (req, res) => res.status(501).json({ todo: true });
@@ -82,7 +82,23 @@ router.post("/", requireAuth, requireAdmin, async (req, res) => {
     res.status(201).json({ market });
 });
 router.post("/:id/bets", todo); // Aadarsh
-router.post("/:id/settle", requireAuth, requireAdmin, todo); // Caden (admin only)
+
+// Settle market and pay winners 
+router.post("/:id/settle", requireAuth, requireAdmin, async (req, res) => {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+        return res.status(400).json({ error: "Invalid market id." });
+    }
+
+    const { winningOutcome } = req.body ?? {};
+    if (!Number.isInteger(winningOutcome) || winningOutcome < 0) {
+        return res.status(400).json({ error: "winningOutcome must be an outcome index (0, 1, ...)." });
+    }
+
+    const result = await settleMarket(req.params.id, winningOutcome);
+    res.json(result);
+});
+
+
 router.get("/:id/comments", todo); // Juhn
 router.post("/:id/comments", todo); // Juhn
 
