@@ -29,7 +29,58 @@ router.get("/:id", async (req, res) => {
 
     res.json({ market });
 });
-router.post("/", requireAuth, requireAdmin, todo); // Caden (admin only)
+const CATEGORIES = Market.schema.path("category").enumValues;
+
+// Create a market admins
+router.post("/", requireAuth, requireAdmin, async (req, res) => {
+    const { question, category, outcomes, closesAt } = req.body ?? {};
+
+    if (typeof question !== "string" || !question.trim() || question.trim().length > 200) {
+        return res.status(400).json({ error: "Question is required (max 200 characters)." });
+    }
+
+    if (!CATEGORIES.includes(category)) {
+        return res.status(400).json({ error: `Category must be one of: ${CATEGORIES.join(", ")}.` });
+    }
+
+    if (!Array.isArray(outcomes) || outcomes.length < 2 || outcomes.length > 6) {
+        return res.status(400).json({ error: "A market needs 2 to 6 outcomes." });
+    }
+
+    const cleanOutcomes = [];
+    for (const outcome of outcomes) {
+        const label = typeof outcome?.label === "string" ? outcome.label.trim() : "";
+        const odds = outcome?.odds === undefined ? 2.0 : Number(outcome.odds);
+
+        if (!label) {
+            return res.status(400).json({ error: "Every outcome needs a label." });
+        }
+        if (!Number.isFinite(odds) || odds <= 1) {
+            return res.status(400).json({ error: "Odds must be greater than 1." });
+        }
+        cleanOutcomes.push({ label, odds });
+    }
+
+    const labels = cleanOutcomes.map((o) => o.label.toLowerCase());
+    if (new Set(labels).size !== labels.length) {
+        return res.status(400).json({ error: "Outcome labels must be unique." });
+    }
+
+    const closeDate = new Date(closesAt);
+    if (Number.isNaN(closeDate.getTime()) || closeDate <= new Date()) {
+        return res.status(400).json({ error: "Closing time must be a valid future date." });
+    }
+
+    const market = await Market.create({
+        question: question.trim(),
+        category,
+        outcomes: cleanOutcomes,
+        closesAt: closeDate,
+        createdBy: req.userId,
+    });
+
+    res.status(201).json({ market });
+});
 router.post("/:id/bets", todo); // Aadarsh
 router.post("/:id/settle", requireAuth, requireAdmin, todo); // Caden (admin only)
 router.get("/:id/comments", todo); // Juhn
